@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+        #video {
+            border: 2px solid black;
+            width: 320px;
+            height: 240px;
+        }
+        #photo {
+            border: 2px solid black;
+            width: 320px;
+            height: 240px;
+        }
+        #canvas {
+            display: none;
+        }
+        .camera {
+            width: 340px;
+            display: inline-block;
+        }
+        .output {
+            width: 340px;
+            padding-top: 20px;
+            display: inline-block;
+            position: relative;
+        }
+        #startbutton {
+            display: block;
+            position: relative;
+            margin-left: auto;
+            margin-right: auto;
+            margin-top: 10px;
+            margin-bottom: 10px;
+
+            bottom: -5px;
+            padding: 10px;
+            border: 1px solid rgba(0, 0, 0, 0.7);
+            font-size: 14px;
+            color: black;
+            cursor: pointer;
+        }
+        .contentarea {
+            font-size: 16px;
+            font-family: Arial;
+            text-align: center;
+        }
+        </style>
+  </head>
+  <body>
+
+    <div class="contentarea">
+        <h1 >
+            Google Vision API
+        </h1>
+        <div class="camera">
+            <video id="video">Video not available.</video>
+        </div>
+        <div>
+            <button id="startbutton">Take photo</button>
+            <button id="startbutton">  <input type="file" id="fileInput" accept="image/*"></button>
+            <select id="categorySelect">
+                <option value="LABEL_DETECTION">Label Detection</option>
+                <option value="FACE_DETECTION">Face Detection</option>
+                <option value="LANDMARK_DETECTION">Landmark Detection</option>
+                <option value="LOGO_DETECTION">Logo Detection</option>
+                <option value="OBJECT_LOCALIZATION">Object Detection</option>
+            </select>
+            <button id="vision_button" style="display:none;">Analyze</button>
+            <button id="reset_button" style="display:none;">RESET</button>
+        </div>
+        <canvas id="canvas"></canvas>
+        <div id="photoContainer" class="output">
+            <img id="photo" alt="The screen capture will appear in this box.">
+        </div>
+        <div id="results" class="camera"></div>
+    </div>
+    
+    <script>
+        (function() {
+
+        var width = 320;
+        var height = 0;
+
+        var streaming = false;
+
+        var video = null;
+        var canvas = null;
+        var photo = null;
+        var startbutton = null;
+        var resetButton = null;
+        const facialLandmarks = []
+
+        function startup() {
+            video = document.getElementById('video');
+            canvas = document.getElementById('canvas');
+            photo = document.getElementById('photo');
+            startbutton = document.getElementById('startbutton');
+            resetButton = document.getElementById('reset_button');
+            photoContainer = document.getElementById('photoContainer');
+            results = document.getElementById('results')
+
+            navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: false
+                })
+                .then(function(stream) {
+                    video.srcObject = stream;
+                    video.play();
+                })
+                .catch(function(err) {
+                    console.log("An error occurred: " + err);
+                });
+
+            video.addEventListener('canplay', function(ev) {
+                if (!streaming) {
+                    height = video.videoHeight / (video.videoWidth / width);
+
+                    if (isNaN(height)) {
+                        height = width / (4 / 3);
+                    }
+
+                    video.setAttribute('width', width);
+                    video.setAttribute('height', height);
+                    canvas.setAttribute('width', width);
+                    canvas.setAttribute('height', height);
+                    streaming = true;
+                }
+            }, false);
+
+            startbutton.addEventListener('click', function(ev) {
+                takepicture();
+                ev.preventDefault();
+                showAnalyzeButton();
+            }, false);
+
+            resetButton.addEventListener('click', function() {
+                clearphoto();
+                var facialLandmarks = document.querySelectorAll('.facial-landmark');
+                facialLandmarks.forEach(function(landmark) {
+                    landmark.parentNode.removeChild(landmark);
+                });
+                results.innerHTML = ""
+                document.getElementById('fileInput').value = '';
+                document.getElementById('vision_button').style.display = 'none';
+                document.getElementById('reset_button').style.display = 'none';
+
+            });
+
+            document.getElementById('fileInput').addEventListener('change', handleFileInput);
+
+
+            function handleFileInput(event) {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const img = new Image();
+                        img.onload = function() {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            const pngDataUrl = canvas.toDataURL('image/png');
+                            photo.setAttribute('src', pngDataUrl);
+                            showAnalyzeButton();
+                        };
+                        img.src = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+                clearphoto()
+            }
+
+            function showAnalyzeButton() {
+                document.getElementById('vision_button').style.display = 'inline-block';
+                document.getElementById('reset_button').style.display = 'inline-block';
+            }
+
+            function clearphoto() {
+                var context = canvas.getContext('2d');
+                context.fillStyle = "#AAA";
+                context.fillRect(0, 0, canvas.width, canvas.height);
+
+                var data = canvas.toDataURL('image/png');
+                photo.setAttribute('src', data);
+                document.getElementById('vision_button').style.display = 'none';
+            }
+
+            function takepicture() {
+                var context = canvas.getContext('2d');
+                if (width && height) {
+                    canvas.width = width;
+                    canvas.height = height;
+                    context.drawImage(video, 0, 0, width, height);
+
+                    var data = canvas.toDataURL('image/png');
+                    photo.setAttribute('src', data);
+                } else {
+                    clearphoto();
+                }
+            }
+            function drawFacialLandmarks() {
+                facialLandmarks.forEach(function (landmark) {
+                    createFacialLandmarkElement(landmark.position);
+                });
+            }
+
+            function createFacialLandmarkElement(position) {
+                var landmarkElement = document.createElement('div');
+                landmarkElement.className = 'facial-landmark';
+                landmarkElement.style.position = 'absolute';
+                landmarkElement.style.width = '6px';
+                landmarkElement.style.height = '6px';
+                landmarkElement.style.background = 'blue';
+                landmarkElement.style.borderRadius = '50%';
+                landmarkElement.style.left = position.x + 'px';
+                landmarkElement.style.top = position.y + 'px';
+                photoContainer.appendChild(landmarkElement);
+            }
+
+            function showResults(response){
+                response.forEach( annotation => {
+                        let description = document.createElement('span');
+                        let score = document.createElement('span');
+
+                        let div = document.createElement('div');
+                        if (annotation.description){
+                            description.innerText = annotation.description;
+                        }else {
+                            description.innerText = annotation.name;
+
+                        }
+                        score.innerText = annotation.score;
+
+                        div.append(description,score);
+
+                        results.append(div);
+                });
+            }
+
+
+            document.querySelector("#vision_button").addEventListener('click', evt => {
+                    var dataUrl = photo.getAttribute('src');
+
+                    var selectedCategory = document.querySelector("#categorySelect").value;
+
+                    fetch('https://vision.googleapis.com/v1/images:annotate?key=AIzaSyDEO1IL3do4vXJ7Z5LWlMZSZ6YEvtAgv6U', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        requests: [
+                        {
+                            features: {
+                            type: selectedCategory
+                            },
+                            image: {
+                                content: dataUrl.substring('data:image/jpg;base64,'.length)
+                            }
+                        }
+                        ]
+                    })
+                    }).then( resp => {
+                        return resp.json();
+                    }).then( json => {
+                        results.innerHTML = '';
+                    if (selectedCategory === 'FACE_DETECTION'){
+                            json.responses[0].faceAnnotations[0].landmarks.forEach( annotation => {
+                                facialLandmarks.push(annotation)
+                             });
+                            drawFacialLandmarks();
+                    }
+                    else{
+                        if (selectedCategory == 'LABEL_DETECTION'){
+                            showResults(json.responses[0].labelAnnotations)
+                        }else if (selectedCategory == 'LANDMARK_DETECTION'){
+                            showResults(json.responses[0].landmarkAnnotations)
+                        }else if (selectedCategory == 'LOGO_DETECTION'){
+                            showResults(json.responses[0].logoAnnotations)
+                        } else if (selectedCategory == 'OBJECT_LOCALIZATION'){
+                            showResults(json.responses[0].localizedObjectAnnotations)
+                        }
+                    }
+                    });
+                });
+            window.addEventListener('load', startup, false);
+        })();
+    </script>
+  </body>
+</html>
